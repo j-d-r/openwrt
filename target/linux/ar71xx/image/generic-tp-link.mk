@@ -252,7 +252,18 @@ define Device/eap120-v1
   IMAGE/sysupgrade.bin := append-rootfs | tplink-safeloader sysupgrade
   IMAGE/factory.bin := append-rootfs | tplink-safeloader factory
 endef
-TARGET_DEVICES += eap120-v1
+
+define Device/eap245-v1
+  $(Device/eap120-v1)
+  KERNEL_SIZE := 1792k
+  DEVICE_TITLE := TP-LINK EAP245 v1
+  MTDPARTS := spi0.0:128k(u-boot)ro,64k(partition-table)ro,64k(product-info)ro,1792k(kernel),14080k(rootfs),192k(config)ro,64k(ART)ro,15872k@0x40000(firmware)
+  DEVICE_PACKAGES := kmod-ath9k kmod-ath10k-ct ath10k-firmware-qca988x-ct
+  BOARDNAME := EAP245-V1
+  TPLINK_BOARD_ID := EAP245_V1
+  SUPPORTED_DEVICES := eap245-v1
+endef
+TARGET_DEVICES += eap120-v1 eap245-v1
 
 define Device/re355-v1
   $(Device/tplink-safeloader)
