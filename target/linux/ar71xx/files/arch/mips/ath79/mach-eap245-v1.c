@@ -1,52 +1,62 @@
+
 /*
  * TP-LINK EAP245 v1 board support
- * 
- * Based on EAP120 from Henryk Heisig <hyniu@o2.pl>
+ * Based on TP-Link GPL code for Linux 3.3.8 (hack of mach-ap152.c)
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License version 2 as published
- * by the Free Software Foundation.
+ * Copyright (c) 2014 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012 Gabor Juhos <juhosg@openwrt.org>
+ *
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  * 
  * EAP245 v1 board support wifi AC1750 and gigabit LAN:
- * 	- QCA9563-AL3A MIPS 74kc and 2.4GHz wifi
+ *  - QCA9563-AL3A MIPS 74kc and 2.4GHz wifi
  *  - QCA9880-BR4A 5 GHz wifi ath10k
  *  - AR8033-AL1A 1 gigabit lan port
- * 	- 25Q128CSIG SPI NOR
+ *  - 25Q128CSIG SPI NOR
  */
 
-#include <linux/gpio.h>
 #include <linux/platform_device.h>
-#include <linux/platform_data/mdio-gpio.h>
-#include <asm/mach-ath79/ath79.h>
+#include <linux/ath9k_platform.h>
 #include <asm/mach-ath79/ar71xx_regs.h>
-#include <linux/platform_data/phy-at803x.h>
 #include <linux/delay.h>
+#include <linux/platform_data/phy-at803x.h>
+#include <linux/platform_data/mdio-gpio.h>
 
 #include "common.h"
+#include "dev-m25p80.h"
+#include "machtypes.h"
+#include "pci.h"
 #include "dev-eth.h"
 #include "dev-gpio-buttons.h"
 #include "dev-leds-gpio.h"
-#include "dev-m25p80.h"
+#include "dev-spi.h"
+#include "dev-usb.h"
 #include "dev-wmac.h"
-#include "machtypes.h"
-#include "pci.h"
 #include "956x.h"
 
 /* GPIO
  * GPIO4 reset the boad when direction is changed, be careful
  * GPIO5 si a master switch for all leds */
-#define EAP245_V1_GPIO_LED_RED		1
-#define EAP245_V1_GPIO_LED_YEL		9
-#define EAP245_V1_GPIO_LED_GRN		7
-#define EAP245_V1_GPIO_LED_ALL		5
-#define EAP245_V1_GPIO_BTN_RESET	2
-
-#define EAP245_V1_KEYS_POLL_INTERVAL		20	/* msecs */
-#define EAP245_V1_KEYS_DEBOUNCE_INTERVAL	(3 * EAP245_V1_KEYS_POLL_INTERVAL)
+#define EAP245_V1_GPIO_LED_RED         1
+#define EAP245_V1_GPIO_LED_YEL         9
+#define EAP245_V1_GPIO_LED_GRN         7
+#define EAP245_V1_GPIO_LED_ALL         5
+#define EAP245_V1_GPIO_BTN_RESET       2
+#define EAP245_V1_KEYS_POLL_INTERVAL        20	/* msecs */
+#define EAP245_V1_KEYS_DEBOUNCE_INTERVAL    (3 * EAP245_V1_KEYS_POLL_INTERVAL)
 
 #define EAP245_V1_GPIO_SMI_MDC		8
 #define EAP245_V1_GPIO_SMI_MDIO		10
-
 #define EAP245_V1_LAN_PHYADDR		4
 
 static struct gpio_led eap245_v1_leds_gpio[] __initdata = {
@@ -57,20 +67,27 @@ static struct gpio_led eap245_v1_leds_gpio[] __initdata = {
 		.name = "eap245-v1:yellow:system",
 		.gpio = EAP245_V1_GPIO_LED_YEL,
 	}, {
-		.name ="eap245-v1:green:system",
+		.name = "eap245-v1:green:system",
 		.gpio = EAP245_V1_GPIO_LED_GRN,
 	},
 };
 
 static struct gpio_keys_button eap245_v1_gpio_keys[] __initdata = {
 	{
-		.desc		= "Reset button",
-		.type		= EV_KEY,
-		.code		= KEY_RESTART,
+		.desc = "Reset button",
+		.type = EV_KEY,
+		.code = KEY_RESTART,
 		.debounce_interval = EAP245_V1_KEYS_DEBOUNCE_INTERVAL,
-		.gpio		= EAP245_V1_GPIO_BTN_RESET,
+		.gpio = EAP245_V1_GPIO_BTN_RESET,
 		.active_low = 1,
-	},
+	 },
+};
+
+static struct at803x_platform_data eap245_v1_ar8033_data = {
+	.disable_smarteee = 0,
+	.enable_rgmii_rx_delay = 1,
+	.enable_rgmii_tx_delay = 0,
+	.fixup_rgmii_tx_delay = 1,
 };
 
 static struct mdio_gpio_platform_data eap245_v1_mdio = {
@@ -79,23 +96,15 @@ static struct mdio_gpio_platform_data eap245_v1_mdio = {
 	.phy_mask	= ~BIT(EAP245_V1_LAN_PHYADDR),
 };
 
-static struct at803x_platform_data eap245_v1_ar8033_data = {
-	.disable_smarteee		= 0,
-	.enable_rgmii_rx_delay	= 1,
-	.enable_rgmii_tx_delay	= 0,
-	.fixup_rgmii_tx_delay	= 1,
-};
-
 static struct platform_device eap245_v1_phy_device = {
 	.name	= "mdio-gpio",
-	.id		= 0,
+	.id	= 0,
 	.dev	= {
 		.platform_data = &eap245_v1_mdio, &eap245_v1_ar8033_data
 	},
 };
 
-//#include "956x.h"
-
+/* MDIO initialization code from TP-Link GPL code */
 typedef unsigned int ath_reg_t;
 
 #define ath_reg_rd(_phys)	(*(volatile ath_reg_t *)KSEG1ADDR(_phys))
@@ -115,46 +124,7 @@ typedef unsigned int ath_reg_t;
 	ath_reg_rd((_reg));					\
 } while(0)
 
-#if 0
-#define SGMII_SERDES_ADDRESS                                         0x18070018
-#define ETH_SGMII_SERDES_ADDRESS                                     0x1805004c
-#define ETH_SGMII_SERDES_EN_LOCK_DETECT_MASK                         0x00000004
-#define ETH_SGMII_SERDES_EN_PLL_MASK                                 0x00000001
-#define RST_RESET_ADDRESS                                            0x1806001c
-#define RST_RESET_ETH_SGMII_ARESET_MASK                              0x00001000
-#define RST_RESET_ETH_SGMII_RESET_MASK                               0x00000100
-#define SGMII_SERDES_LOCK_DETECT_STATUS_MASK                         0x00008000
-
-#define SGMII_SERDES_VCO_SLOW_MASK                                   0x00000400
-#define SGMII_SERDES_VCO_SLOW_GET(x)                                 (((x) & SGMII_SERDES_VCO_SLOW_MASK) >> 10)
-
-#define SGMII_SERDES_VCO_FAST_MASK                                   0x00000200
-#define SGMII_SERDES_VCO_FAST_GET(x)                                 (((x) & SGMII_SERDES_VCO_FAST_MASK) >> 9)
-
-#define SGMII_SERDES_RES_CALIBRATION_MASK                            0x07800000
-#define SGMII_SERDES_RES_CALIBRATION_SET(x)                          (((x) << 23) & SGMII_SERDES_RES_CALIBRATION_MASK)
-
-
-#define SGMII_SERDES_CDR_BW_MASK                                     0x00000006
-#define SGMII_SERDES_CDR_BW_SET(x)                                   (((x) << 1) & SGMII_SERDES_CDR_BW_MASK)
-
-#define SGMII_SERDES_TX_DR_CTRL_MASK                                 0x00000070
-#define SGMII_SERDES_TX_DR_CTRL_SET(x)                               (((x) << 4) & SGMII_SERDES_TX_DR_CTRL_MASK)
-
-#define SGMII_SERDES_PLL_BW_MASK                                     0x00000100
-#define SGMII_SERDES_PLL_BW_SET(x)                                   (((x) << 8) & SGMII_SERDES_PLL_BW_MASK)
-
-#define SGMII_SERDES_EN_SIGNAL_DETECT_MASK                           0x00010000
-#define SGMII_SERDES_EN_SIGNAL_DETECT_SET(x)                         (((x) << 16) & SGMII_SERDES_EN_SIGNAL_DETECT_MASK)
-
-#define SGMII_SERDES_FIBER_SDO_MASK                                  0x00020000
-#define SGMII_SERDES_FIBER_SDO_SET(x)                                (((x) << 17) & SGMII_SERDES_FIBER_SDO_MASK)
-
-#define SGMII_SERDES_VCO_REG_MASK                                    0x78000000
-#define SGMII_SERDES_VCO_REG_SET(x)                                  (((x) << 27) & SGMII_SERDES_VCO_REG_MASK)
-#endif
-
-void athrs_sgmii_res_cal(void)
+static void __init athrs_sgmii_res_cal(void)
 {
 	unsigned int read_data;
 	unsigned int reversed_sgmii_value;
@@ -227,7 +197,7 @@ void athrs_sgmii_res_cal(void)
 		SGMII_SERDES_LOCK_DETECT_STATUS_MASK)) ;
 }
 
-void athrs_sgmii_set_up(void)
+static void __init athrs_sgmii_set_up(void)
 {
 	uint32_t status = 0, count = 0;
 
@@ -287,7 +257,7 @@ void athrs_sgmii_set_up(void)
 
 }
 
-void ath_gmac_mii_setup(void)
+static void __init ath_gmac_mii_setup(void)
 {
 	unsigned int mgmt_cfg_val;
 	ath_reg_wr(SWITCH_CLOCK_SPARE_ADDRESS, 0xc5200);
@@ -304,7 +274,7 @@ void ath_gmac_mii_setup(void)
 	ath_reg_wr(ATH_MAC_MII_MGMT_CFG, mgmt_cfg_val);
 }
 
-void ath_gmac_hw_start(void)
+static void __init ath_gmac_hw_start(void)
 {
 	ath_reg_wr(ATH_MAC_CFG2, (ATH_MAC_CFG2_PAD_CRC_EN |
 				  ATH_MAC_CFG2_LEN_CHECK |
@@ -317,7 +287,7 @@ void ath_gmac_hw_start(void)
 	ath_reg_wr(ATH_MAC_FIFO_CFG_3, 0x1f00140);
 }
 
-void ath_gmac_enet_initialize(void)
+static void __init ath_gmac_enet_initialize(void)
 {
 	unsigned int mask;
 	athrs_sgmii_res_cal();
@@ -356,48 +326,6 @@ void ath_gmac_enet_initialize(void)
 	ath_gmac_hw_start();
 }
 
-static void __init eap245_v1_mdio_setup(void)
-{
-	unsigned int rddata;
-
-	ath_gmac_enet_initialize();
-
-	ath79_gpio_output_select(EAP245_V1_GPIO_SMI_MDC,
-				 QCA956X_GPIO_OUT_MUX_GE0_MDC);
-	ath79_gpio_output_select(EAP245_V1_GPIO_SMI_MDIO,
-				 QCA956X_GPIO_OUT_MUX_GE0_MDO);
-
-	/*
-	 * GPIO 10 as MDI
-	 */
-	rddata = ath_reg_rd(GPIO_IN_ENABLE3_ADDRESS) &
-	    ~GPIO_IN_ENABLE3_MII_GE0_MDI_MASK;
-	rddata |= GPIO_IN_ENABLE3_MII_GE0_MDI_SET(10);
-	ath_reg_wr(GPIO_IN_ENABLE3_ADDRESS, rddata);
-	/*
-	 * GPIO 10 as MDO
-	 */
-	rddata = ath_reg_rd(GPIO_OUT_FUNCTION2_ADDRESS) &
-	    ~(GPIO_OUT_FUNCTION2_ENABLE_GPIO_10_MASK);
-	rddata |= (GPIO_OUT_FUNCTION2_ENABLE_GPIO_10_SET(0x20));
-	ath_reg_wr(GPIO_OUT_FUNCTION2_ADDRESS, rddata);
-
-	/*
-	 * GPIO 8 as MDC
-	 */
-	rddata = ath_reg_rd(GPIO_OE_ADDRESS);
-	rddata &= ~(1 << 8);
-	ath_reg_wr(GPIO_OE_ADDRESS, rddata);
-	rddata = ath_reg_rd(GPIO_OUT_FUNCTION2_ADDRESS) &
-	    ~(GPIO_OUT_FUNCTION2_ENABLE_GPIO_8_MASK);
-	rddata |= GPIO_OUT_FUNCTION2_ENABLE_GPIO_8_SET(0x21);
-	ath_reg_wr(GPIO_OUT_FUNCTION2_ADDRESS, rddata);
-
-	/*ath_reg_wr(0xb8040000,0xdf75e4); */
-
-	ath79_register_mdio(0, 0x0);
-}
-
 static void __init eap245_v1_setup(void)
 {
 	u8 *mac = (u8 *) KSEG1ADDR(0x1f030008);
@@ -405,24 +333,21 @@ static void __init eap245_v1_setup(void)
 	u8 wmac_addr[ETH_ALEN];
 
 	ath79_register_leds_gpio(-1, ARRAY_SIZE(eap245_v1_leds_gpio),
-								eap245_v1_leds_gpio);
+				 eap245_v1_leds_gpio);
 
 	ath79_register_gpio_keys_polled(-1, EAP245_V1_KEYS_POLL_INTERVAL,
-									ARRAY_SIZE(eap245_v1_gpio_keys),
-									eap245_v1_gpio_keys);
+					ARRAY_SIZE(eap245_v1_gpio_keys),
+					eap245_v1_gpio_keys);
 
 	ath79_register_m25p80(NULL);
 
-	//platform_device_register(&eap245_v1_phy_device);
-	//ath79_setup_qca956x_eth_cfg(QCA956X_ETH_CFG_SW_PHY_SWAP |
-	//							QCA956X_ETH_CFG_SW_PHY_ADDR_SWAP);
-	eap245_v1_mdio_setup();
-	mdiobus_register_board_info(eap245_v1_mdio0_info,
+	/* This board need initialization code for LAN */
+	ath_gmac_enet_initialize();
+	platform_device_register(&eap245_v1_phy_device);
+        ath79_setup_qca956x_eth_cfg(QCA956X_ETH_CFG_SW_PHY_SWAP | QCA956X_ETH_CFG_SW_PHY_ADDR_SWAP);
 
 	printk(KERN_DEBUG "Read mac address %pK: %pM\n", mac, mac);
 	/* Set 2.4 GHz to mac + 1 */
-	/* TODO: if these two line are moved at the end of function lan
-	 * iface timeout on TX. Find why, need a sleep, bad pll ? */
 	ath79_init_mac(wmac_addr, mac, 1);
 	ath79_register_wmac(ee, wmac_addr);
 
@@ -431,15 +356,13 @@ static void __init eap245_v1_setup(void)
 
 	/* Set lan port to eepromm mac address */
 	ath79_init_mac(ath79_eth0_data.mac_addr, mac, 0);
-	ath79_eth0_data.mii_bus_dev = &eap245_v1_phy_device.dev;
-	ath79_eth0_data.phy_if_mode = PHY_INTERFACE_MODE_RGMII;
+	ath79_eth0_data.mii_bus_dev = &ath79_mdio0_device.dev;
+	ath79_eth0_data.phy_if_mode = PHY_INTERFACE_MODE_SGMII;
+	ath79_eth0_data.speed = SPEED_1000;
+	ath79_eth0_data.duplex = DUPLEX_FULL;
 	ath79_eth0_data.phy_mask = BIT(EAP245_V1_LAN_PHYADDR);
-	/*ath79_eth0_pll_data.pll_1000 = 0x0e000000;
-	ath79_eth0_pll_data.pll_100 = 0x00000101;
-	ath79_eth0_pll_data.pll_10 = 0x00001313;*/
 	ath79_register_eth(0);
-
 }
 
 MIPS_MACHINE(ATH79_MACH_EAP245_V1, "EAP245-V1", "TP-LINK EAP245 v1",
-		eap245_v1_setup);
+	     eap245_v1_setup);
