@@ -283,6 +283,8 @@ define Device/eap245-v1
   DEVICE_PACKAGES := kmod-ath9k kmod-ath10k ath10k-firmware-qca988x
   BOARDNAME := EAP245-V1
   TPLINK_BOARD_ID := EAP245_V1
+  IMAGES := sysupgrade.bin factory.bin kernel.elf
+  IMAGE/kernel.elf := kernel-bin
 endef
 
 TARGET_DEVICES += eap120-v1 eap245-v1
