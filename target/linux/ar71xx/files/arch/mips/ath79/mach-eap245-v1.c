@@ -44,6 +44,16 @@
 #include "dev-wmac.h"
 #include "956x.h"
 
+#define QCA956X_RESET_EXTERNAL		BIT(28)
+#define QCA956X_RESET_GE1_MDIO		BIT(23)
+#define QCA956X_RESET_GE0_MDIO		BIT(22)
+#define QCA956X_RESET_GE1_MAC		BIT(13)
+#define QCA956X_RESET_SGMII_ANALOG	BIT(12)
+#define QCA956X_RESET_GE0_MAC		BIT(9)
+#define QCA956X_RESET_SGMII		BIT(8)
+#define QCA956X_RESET_SWITCH_ANALOG	BIT(2)
+#define QCA956X_RESET_SWITCH		BIT(0)
+
 /* GPIO
  * GPIO4 reset the boad when direction is changed, be careful
  * GPIO5 si a master switch for all leds */
@@ -189,9 +199,9 @@ static void __init athrs_sgmii_res_cal(void)
 			SGMII_SERDES_FIBER_SDO_SET(1) |
 			SGMII_SERDES_VCO_REG_SET(3));
 
-	ath_reg_rmw_clear(RST_RESET_ADDRESS, RST_RESET_ETH_SGMII_ARESET_MASK);
+	ath_reg_rmw_clear(RST_RESET_ADDRESS, QCA956X_RESET_SGMII_ANALOG);
 	udelay(25);
-	ath_reg_rmw_clear(RST_RESET_ADDRESS, RST_RESET_ETH_SGMII_RESET_MASK);
+	ath_reg_rmw_clear(RST_RESET_ADDRESS, QCA956X_RESET_SGMII);
 	while (!
 	       (ath_reg_rd(SGMII_SERDES_ADDRESS) &
 		SGMII_SERDES_LOCK_DETECT_STATUS_MASK)) ;
@@ -292,32 +302,29 @@ static void __init ath_gmac_enet_initialize(void)
 	unsigned int mask;
 	athrs_sgmii_res_cal();
 
-	ath_reg_rmw_set(RST_RESET_ADDRESS, RST_RESET_ETH_SGMII_ARESET_SET(1));
-	udelay(1000 * 100);
-	ath_reg_rmw_clear(RST_RESET_ADDRESS, RST_RESET_ETH_SGMII_ARESET_SET(1));
-	udelay(100);
-	mask =
-	    RST_RESET_ETH_SGMII_RESET_SET(1) | RST_RESET_ETH_SGMII_ARESET_SET(1)
-	    | RST_RESET_EXTERNAL_RESET_SET(1) |
-	    RST_RESET_ETH_SWITCH_ANALOG_RESET_SET(1) |
-	    RST_RESET_ETH_SWITCH_RESET_SET(1);
+	ath_reg_rmw_set(RST_RESET_ADDRESS, QCA956X_RESET_SGMII_ANALOG);
+	mdelay(100);
+	ath_reg_rmw_clear(RST_RESET_ADDRESS, QCA956X_RESET_SGMII_ANALOG);
+	mdelay(100);
+	mask = QCA956X_RESET_SGMII | QCA956X_RESET_SGMII_ANALOG
+	    | QCA956X_RESET_EXTERNAL | QCA956X_RESET_SWITCH_ANALOG
+	    | QCA956X_RESET_SWITCH;
 	ath_reg_rmw_set(RST_RESET_ADDRESS, mask);
-	udelay(1000 * 100);
-	mask =
-	    RST_RESET_ETH_SGMII_RESET_SET(1) | RST_RESET_ETH_SGMII_ARESET_SET(1)
-	    | RST_RESET_EXTERNAL_RESET_SET(1);
+	mdelay(100);
+	mask = QCA956X_RESET_SGMII | QCA956X_RESET_SGMII_ANALOG
+	    | QCA956X_RESET_EXTERNAL;
 	ath_reg_rmw_clear(RST_RESET_ADDRESS, mask);
-	udelay(1000 * 100);
+	mdelay(100);
 	ath_reg_rmw_set(ATH_MAC_CFG1,
 			ATH_MAC_CFG1_SOFT_RST | ATH_MAC_CFG1_RX_RST |
 			ATH_MAC_CFG1_TX_RST);
-	mask = (ATH_RESET_GE0_MAC | ATH_RESET_GE1_MAC);
-	mask = mask | ATH_RESET_GE0_MDIO | ATH_RESET_GE1_MDIO;
+
+	mask = QCA956X_RESET_GE0_MAC | QCA956X_RESET_GE1_MAC | QCA956X_RESET_GE0_MDIO | QCA956X_RESET_GE1_MDIO;
 	ath_reg_rmw_set(RST_RESET_ADDRESS, mask);
-	udelay(1000 * 100);
+	mdelay(100);
 	ath_reg_rmw_clear(RST_RESET_ADDRESS, mask);
-	udelay(1000 * 100);
-	udelay(10 * 1000);
+	mdelay(100);
+	mdelay(10);
 
 	ath_gmac_mii_setup();
 
