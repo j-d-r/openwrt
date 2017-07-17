@@ -45,60 +45,6 @@
 #include "dev-wmac.h"
 //#include "956x.h"
 
-#define QCA956X_RESET_EXTERNAL		BIT(28)
-#define QCA956X_RESET_GE1_MDIO		BIT(23)
-#define QCA956X_RESET_GE0_MDIO		BIT(22)
-#define QCA956X_RESET_GE1_MAC		BIT(13)
-#define QCA956X_RESET_SGMII_ANALOG	BIT(12)
-#define QCA956X_RESET_GE0_MAC		BIT(9)
-#define QCA956X_RESET_SGMII		BIT(8)
-#define QCA956X_RESET_SWITCH_ANALOG	BIT(2)
-#define QCA956X_RESET_SWITCH		BIT(0)
-
-#define QCA956X_PLL_REG_SGMII_SERDES			0x4c
-#define QCA956X_PLL_SGMII_SERDES_EN_LOCK_DETECT		BIT(2)
-#define QCA956X_PLL_SGMII_SERDES_EN_PLL			BIT(1)
-
-#define QCA956X_MAC_CFG1		0xb9000000
-#define QCA956X_MAC_CFG1_SOFT_RST	BIT(31)
-#define QCA956X_MAC_CFG1_RX_RST		BIT(19)
-#define QCA956X_MAC_CFG1_TX_RST		BIT(18)
-#define QCA956X_MAC_CFG1_LOOPBACK	BIT(8)
-#define QCA956X_MAC_CFG1_RX_EN		BIT(2)
-#define QCA956X_MAC_CFG1_TX_EN		BIT(0)
-
-#define QCA956X_MAC_CFG2		0xb9000004
-#define QCA956X_MAC_CFG2_IF_1000	BIT(9)
-#define QCA956X_MAC_CFG2_IF_10_100	BIT(8)
-#define QCA956X_MAC_CFG2_HUGE_FRAME_EN	BIT(5)
-#define QCA956X_MAC_CFG2_LEN_CHECK	BIT(4)
-#define QCA956X_MAC_CFG2_PAD_CRC_EN	BIT(2)
-#define QCA956X_MAC_CFG2_FDX		BIT(0)
-
-#define QCA956X_MAC_FIFO_CFG_0		0xb9000048
-#define QCA956X_MAC_FIFO_CFG_1		0xb900004c
-#define QCA956X_MAC_FIFO_CFG_2		0xb9000050
-#define QCA956X_MAC_FIFO_CFG_3		0xb9000054
-#define QCA956X_MAC_FIFO_CFG_4		0xb9000058
-#define QCA956X_MAC_FIFO_CFG_5		0xb900005c
-
-#define QCA956X_SGMII_SERDES_ADDRESS			(QCA956X_GMAC_SGMII_BASE + 0x18)
-#define QCA956X_SGMII_SERDES_VCO_REG_SHIFT		27
-#define QCA956X_SGMII_SERDES_VCO_REG_MASK		0xf
-#define QCA956X_SGMII_SERDES_RES_CALIBRATION_SHIFT	23
-#define QCA956X_SGMII_SERDES_RES_CALIBRATION_MASK	0xf
-#define QCA956X_SGMII_SGMII_SERDES_FIBER_SDO		BIT(17)
-#define QCA956X_SGMII_SERDES_EN_SIGNAL_DETECT		BIT(16)
-#define QCA956X_SGMII_SERDES_LOCK_DETECT_STATUS		BIT(15)
-#define QCA956X_SGMII_SERDES_VCO_SLOW			BIT(10)
-#define QCA956X_SGMII_SERDES_VCO_FAST			BIT(9)
-#define QCA956X_SGMII_SERDES_PLL_BW			BIT(8)
-#define QCA956X_SGMII_SERDES_TX_DR_CTRL_SHIFT		4
-#define QCA956X_SGMII_SERDES_TX_DR_CTRL_MASK		0x7
-#define QCA956X_SGMII_SERDES_CDR_BW_SHIFT		1
-#define QCA956X_SGMII_SERDES_CDR_BW_MASK		0x3
-
-
 
 /* GPIO
  * GPIO4 reset the boad when direction is changed, be careful
@@ -161,26 +107,7 @@ static struct platform_device eap245_v1_phy_device = {
 };
 
 /* MDIO initialization code from TP-Link GPL code */
-typedef unsigned int ath_reg_t;
-
-#define ath_reg_rd(_phys)	(*(volatile ath_reg_t *)KSEG1ADDR(_phys))
-
-#define ath_reg_wr_nf(_phys, _val) \
-	((*(volatile ath_reg_t *)KSEG1ADDR(_phys)) = (_val))
-#define ath_reg_wr(_phys, _val) do {	\
-	ath_reg_wr_nf(_phys, _val);	\
-	ath_reg_rd(_phys);		\
-} while(0)
-#define ath_reg_rmw_set(_reg, _mask)	do {			\
-	ath_reg_wr((_reg), (ath_reg_rd((_reg)) | (_mask)));	\
-	ath_reg_rd((_reg));					\
-} while(0)
-#define ath_reg_rmw_clear(_reg, _mask) do {			\
-	ath_reg_wr((_reg), (ath_reg_rd((_reg)) & ~(_mask)));	\
-	ath_reg_rd((_reg));					\
-} while(0)
-
-static void __init athrs_sgmii_res_cal(void)
+static void __init athrs_sgmii_res_cal(void __iomem *gmac_sgmi_base)
 {
 	unsigned int read_data;
 	unsigned int reversed_sgmii_value;
@@ -188,24 +115,23 @@ static void __init athrs_sgmii_res_cal(void)
 	unsigned int vco;
 	unsigned int startValue = 0, endValue = 0;
 
-	ath79_pll_wr(QCA956X_PLL_REG_SGMII_SERDES,
+	ath79_pll_wr(QCA956X_PLL_SGMII_SERDES_REG,
 		   QCA956X_PLL_SGMII_SERDES_EN_LOCK_DETECT |
 		   QCA956X_PLL_SGMII_SERDES_EN_PLL);
 
-	read_data = ath_reg_rd(QCA956X_SGMII_SERDES_ADDRESS);
-
+	read_data = __raw_readl(gmac_sgmi_base + QCA956X_SGMII_SERDES_REG);
 	vco = read_data & (QCA956X_SGMII_SERDES_VCO_FAST | QCA956X_SGMII_SERDES_VCO_SLOW);
 
 	/* set resistor Calibration from 0000 -> 1111 */
 	for (i = 0; i < 0x10; i++) {
-		read_data = ath_reg_rd(QCA956X_SGMII_SERDES_ADDRESS);
+		read_data = __raw_readl(gmac_sgmi_base + QCA956X_SGMII_SERDES_REG);
 		read_data &= ~(QCA956X_SGMII_SERDES_RES_CALIBRATION_MASK << QCA956X_SGMII_SERDES_RES_CALIBRATION_SHIFT);
-		read_data |= (i & QCA956X_SGMII_SERDES_RES_CALIBRATION_MASK) << QCA956X_SGMII_SERDES_RES_CALIBRATION_SHIFT;
-		ath_reg_wr(QCA956X_SGMII_SERDES_ADDRESS, read_data);
+		read_data |= i << QCA956X_SGMII_SERDES_RES_CALIBRATION_SHIFT;
+		__raw_writel(read_data, gmac_sgmi_base + QCA956X_SGMII_SERDES_REG);
 
 		udelay(50);
 
-		read_data = ath_reg_rd(QCA956X_SGMII_SERDES_ADDRESS);
+		read_data = __raw_readl(gmac_sgmi_base + QCA956X_SGMII_SERDES_REG);
 		if( vco != (read_data & (QCA956X_SGMII_SERDES_VCO_FAST | QCA956X_SGMII_SERDES_VCO_SLOW))) {
 			if (startValue == 0) {
 				startValue = endValue = i;
@@ -224,158 +150,108 @@ static void __init athrs_sgmii_res_cal(void)
 		reversed_sgmii_value = (startValue + endValue) / 2;
 	}
 
-	read_data = ath_reg_rd(QCA956X_SGMII_SERDES_ADDRESS);
+	read_data = __raw_readl(gmac_sgmi_base + QCA956X_SGMII_SERDES_REG);
 	read_data &= ~(QCA956X_SGMII_SERDES_RES_CALIBRATION_MASK << QCA956X_SGMII_SERDES_RES_CALIBRATION_SHIFT);
 	read_data |= (reversed_sgmii_value & QCA956X_SGMII_SERDES_RES_CALIBRATION_MASK) << QCA956X_SGMII_SERDES_RES_CALIBRATION_SHIFT;
-	ath_reg_wr(QCA956X_SGMII_SERDES_ADDRESS, read_data);
+	__raw_writel(read_data, gmac_sgmi_base + QCA956X_SGMII_SERDES_REG);
 
-	ath79_pll_wr(QCA956X_PLL_REG_SGMII_SERDES,
+	ath79_pll_wr(QCA956X_PLL_SGMII_SERDES_REG,
 		   QCA956X_PLL_SGMII_SERDES_EN_LOCK_DETECT |
 		   QCA956X_PLL_SGMII_SERDES_EN_PLL);
 
-	ath_reg_rmw_set(QCA956X_SGMII_SERDES_ADDRESS,
-			(3 << QCA956X_SGMII_SERDES_CDR_BW_SHIFT) |
+	read_data = __raw_readl(gmac_sgmi_base + QCA956X_SGMII_SERDES_REG);
+	read_data |= (3 << QCA956X_SGMII_SERDES_CDR_BW_SHIFT) |
 			(1 << QCA956X_SGMII_SERDES_TX_DR_CTRL_SHIFT) |
 			QCA956X_SGMII_SERDES_PLL_BW |
 			QCA956X_SGMII_SERDES_EN_SIGNAL_DETECT |
-			QCA956X_SGMII_SGMII_SERDES_FIBER_SDO |
-			(3 << QCA956X_SGMII_SERDES_VCO_REG_SHIFT));
+			QCA956X_SGMII_SERDES_FIBER_SDO |
+			(3 << QCA956X_SGMII_SERDES_VCO_REG_SHIFT);
+	__raw_writel(read_data, gmac_sgmi_base + QCA956X_SGMII_SERDES_REG);
 
 	ath79_device_reset_clear(QCA956X_RESET_SGMII_ANALOG);
 	udelay(25);
 	ath79_device_reset_clear(QCA956X_RESET_SGMII);
-	while (! (ath_reg_rd(QCA956X_SGMII_SERDES_ADDRESS) & QCA956X_SGMII_SERDES_LOCK_DETECT_STATUS)) ;
+	while (! (__raw_readl(gmac_sgmi_base + QCA956X_SGMII_SERDES_REG) &
+			QCA956X_SGMII_SERDES_LOCK_DETECT_STATUS)) ;
 }
 
-#define QCA956X_SGMII_RESET_RX_CLK_N_RESET	0x0
-#define QCA956X_SGMII_RESET_HW_RX_125M_N	BIT(4)
-#define QCA956X_SGMII_RESET_TX_125M_N		BIT(3)
-#define QCA956X_SGMII_RESET_RX_125M_N		BIT(2)
-#define QCA956X_SGMII_RESET_TX_CLK_N		BIT(1)
-#define QCA956X_SGMII_RESET_RX_CLK_N		BIT(0)
 
-#define QCA956X_MR_AN_CONTROL_PHY_RESET		BIT(15)
-#define QCA956X_MR_AN_CONTROL_AN_ENABLE		BIT(12)
-
-#define QCA956X_SGMII_LINK_WAR_MAX_TRY		10
-#define QCA956X_SGMII_RESET_ADDRESS		(QCA956X_GMAC_SGMII_BASE + 0x14)
-#define QCA956X_SGMII_CONFIG_ADDRESS		(QCA956X_GMAC_SGMII_BASE + 0x34)
-#define QCA956X_SGMII_DEBUG_ADDRESS		(QCA956X_GMAC_SGMII_BASE + 0x58)
-#define QCA956X_MR_AN_CONTROL_ADDRESS		0x1807001c
-
-#define QCA956X_SGMII_CONFIG_MODE_CTRL_SHIFT	0
-#define QCA956X_SGMII_CONFIG_MODE_CTRL_MASK     0x7
-
-static void __init athrs_sgmii_set_up(void)
+#define EAP245_V1_SGMII_LINK_WAR_MAX_TRY	10
+static void __init athrs_sgmii_set_up(void __iomem *gmac_sgmi_base, void __iomem *ge0_base)
 {
 	uint32_t status = 0, count = 0, t;
 
-	ath_reg_wr(AR71XX_GE0_BASE, 0x3f);
+	__raw_writel(0x3f, ge0_base + 0);
 	udelay(10);
-	ath_reg_wr(AR71XX_MII_BASE, 0x3c041);
+	__raw_writel(0x3c041, gmac_sgmi_base + 0);
 
-	t = (2 & QCA956X_SGMII_CONFIG_MODE_CTRL_MASK) << QCA956X_SGMII_CONFIG_MODE_CTRL_SHIFT;
-	ath_reg_wr(QCA956X_SGMII_CONFIG_ADDRESS, t);
+	t = 2 << QCA956X_SGMII_CONFIG_MODE_CTRL_SHIFT;
+	__raw_writel(t, gmac_sgmi_base + QCA956X_SGMII_CONFIG_REG);
 
-	ath_reg_wr(QCA956X_MR_AN_CONTROL_ADDRESS, QCA956X_MR_AN_CONTROL_AN_ENABLE |
-		   QCA956X_MR_AN_CONTROL_PHY_RESET);
+	t = QCA956X_MR_AN_CONTROL_AN_ENABLE | QCA956X_MR_AN_CONTROL_PHY_RESET;
+	__raw_writel(t, gmac_sgmi_base + QCA956X_MR_AN_CONTROL_REG);
 
 	/*
 	 * SGMII reset sequence suggested by systems team.
 	 */
-	ath_reg_wr(QCA956X_SGMII_RESET_ADDRESS, QCA956X_SGMII_RESET_RX_CLK_N_RESET);
+	t = QCA956X_SGMII_RESET_RX_CLK_N_RESET,
+	__raw_writel(t, gmac_sgmi_base + QCA956X_SGMII_RESET_REG);
 
 	t = QCA956X_SGMII_RESET_HW_RX_125M_N;
-	ath_reg_wr(QCA956X_SGMII_RESET_ADDRESS, t);
+	__raw_writel(t, gmac_sgmi_base + QCA956X_SGMII_RESET_REG);
 
 	t |= QCA956X_SGMII_RESET_RX_125M_N;
-	ath_reg_wr(QCA956X_SGMII_RESET_ADDRESS, t);
+	__raw_writel(t, gmac_sgmi_base + QCA956X_SGMII_RESET_REG);
 
 	t |= QCA956X_SGMII_RESET_TX_125M_N;
-	ath_reg_wr(QCA956X_SGMII_RESET_ADDRESS, t);
+	__raw_writel(t, gmac_sgmi_base + QCA956X_SGMII_RESET_REG);
 
 	t |= QCA956X_SGMII_RESET_RX_CLK_N;
-	ath_reg_wr(QCA956X_SGMII_RESET_ADDRESS, t);
+	__raw_writel(t, gmac_sgmi_base + QCA956X_SGMII_RESET_REG);
 
 	t |= QCA956X_SGMII_RESET_TX_CLK_N;
-	ath_reg_wr(QCA956X_SGMII_RESET_ADDRESS, t);
+	__raw_writel(t, gmac_sgmi_base + QCA956X_SGMII_RESET_REG);
 
-	ath_reg_rmw_clear(QCA956X_MR_AN_CONTROL_ADDRESS,
-			  QCA956X_MR_AN_CONTROL_PHY_RESET);
+	t = __raw_readl(gmac_sgmi_base + QCA956X_MR_AN_CONTROL_REG) & ~QCA956X_MR_AN_CONTROL_PHY_RESET;
+	__raw_writel(t, gmac_sgmi_base + QCA956X_MR_AN_CONTROL_REG);
 	/*
 	 * WAR::Across resets SGMII link status goes to weird
 	 * state.
 	 * if 0xb8070058 (SGMII_DEBUG register) reads other then 0x1f or 0x10
 	 * for sure we are in bad  state.
-	 * Issue a PHY reset in QCA956X_MR_AN_CONTROL_ADDRESS to keep going.
+	 * Issue a PHY reset in QCA956X_MR_AN_CONTROL_REG to keep going.
 	 */
-	status = (ath_reg_rd(QCA956X_SGMII_DEBUG_ADDRESS) & 0xff);
+	status = (__raw_readl(gmac_sgmi_base + QCA956X_SGMII_DEBUG_REG) & 0xff);
 	while (!(status == 0xf || status == 0x10)) {
 
-		ath_reg_rmw_set(QCA956X_MR_AN_CONTROL_ADDRESS,
-				QCA956X_MR_AN_CONTROL_PHY_RESET);
+		__raw_writel(t | QCA956X_MR_AN_CONTROL_PHY_RESET, gmac_sgmi_base + QCA956X_MR_AN_CONTROL_REG);
 		udelay(100);
-		ath_reg_rmw_clear(QCA956X_MR_AN_CONTROL_ADDRESS,
-				  QCA956X_MR_AN_CONTROL_PHY_RESET);
-		if (count++ == QCA956X_SGMII_LINK_WAR_MAX_TRY) {
+		__raw_writel(t, gmac_sgmi_base + QCA956X_MR_AN_CONTROL_REG);
+		if (count++ == EAP245_V1_SGMII_LINK_WAR_MAX_TRY) {
 			printk("Max resets limit reached exiting...\n");
 			break;
 		}
-		status = (ath_reg_rd(QCA956X_SGMII_DEBUG_ADDRESS) & 0xff);
+		status = (__raw_readl(gmac_sgmi_base + QCA956X_SGMII_DEBUG_REG) & 0xff);
 	}
-
 }
 
-#define QCA956X_GMAC_REG_ETH_CFG	0x00
-
-#define QCA956X_ETH_CFG_RGMII_EN	BIT(0)
-#define QCA956X_ETH_CFG_GE0_SGMII	BIT(6)
-#define QCA956X_ETH_CFG_RXD_DELAY_MASK	0x3
-#define QCA956X_ETH_CFG_RXD_DELAY_SHIFT	14
-#define QCA956X_ETH_CFG_RDV_DELAY_MASK	0x3
-#define QCA956X_ETH_CFG_RDV_DELAY_SHIFT	16
-
-#define QCA956X_PLL_ETH_XMII_CONTROL_REG		0x30
-#define QCA956X_PLL_ETH_XMII_TX_INVERT		BIT(1)
-#define QCA956X_PLL_ETH_XMII_RX_DELAY_SHIFT	28
-#define QCA956X_PLL_ETH_XMII_RX_DELAY_MASK	0x3
-#define QCA956X_PLL_ETH_XMII_TX_DELAY_SHIFT	26
-#define QCA956X_PLL_ETH_XMII_TX_DELAY_MASK	3
-#define QCA956X_PLL_ETH_XMII_GIGE		BIT(25)
-
-#define QCA956X_MAC_MII_MGMT_CFG		0xb9000020
-#define QCA956X_MGMT_CFG_CLK_DIV_20		0x07
-
-#define QCA956X_SWITCH_CLOCK_CONTROL_REG			0x28
-#define QCA956X_SWITCH_CLOCK_SPARE_SWITCHCLK_SEL		BIT(19)
-#define QCA956X_SWITCH_CLOCK_SPARE_OEN_CLK125M_PLL		BIT(18)
-#define QCA956X_SWITCH_CLOCK_SPARE_EEE_ENABLE			BIT(17)
-#define QCA956X_SWITCH_CLOCK_SPARE_SWITCH_FUNC_TST_MODE		BIT(16)
-#define QCA956X_SWITCH_CLOCK_SPARE_MDIO_CLK_SEL1_2		BIT(15)
-#define QCA956X_SWITCH_CLOCK_SPARE_MDIO_CLK_SEL1_1		BIT(14)
-#define QCA956X_SWITCH_CLOCK_SPARE_MDIO_CLK_SEL0_2		BIT(13)
-#define QCA956X_SWITCH_CLOCK_SPARE_EN_PLL_TOP			BIT(12)
-#define QCA956X_SWITCH_CLOCK_SPARE_USB_REFCLK_FREQ_SEL_SHIFT	8
-#define QCA956X_SWITCH_CLOCK_SPARE_USB_REFCLK_FREQ_SEL_MASK	0xf
-#define QCA956X_SWITCH_CLOCK_SPARE_UART1_CLK_SEL		BIT(7)
-#define QCA956X_SWITCH_CLOCK_SPARE_MDIO_CLK_SEL0_1		BIT(6)
-#define QCA956X_SWITCH_CLOCK_SPARE_I2C_CLK_SELB			BIT(5)
-
-
-static void __init ath_gmac_mii_setup(void)
+static void __init ath_gmac_mii_setup(void __iomem *gmac_sgmi_base, void __iomem *mac_cfg_base)
 {
-	ath79_pll_wr(QCA956X_SWITCH_CLOCK_CONTROL_REG, /*0xc5200*/
-			(2 << QCA956X_SWITCH_CLOCK_SPARE_USB_REFCLK_FREQ_SEL_SHIFT) |
-			QCA956X_SWITCH_CLOCK_SPARE_EN_PLL_TOP |
-			QCA956X_SWITCH_CLOCK_SPARE_MDIO_CLK_SEL1_1 |
-			QCA956X_SWITCH_CLOCK_SPARE_OEN_CLK125M_PLL |
-			QCA956X_SWITCH_CLOCK_SPARE_SWITCHCLK_SEL);
+	u32 t;
 
-	ath_reg_wr(QCA956X_GMAC_SGMII_BASE + QCA956X_GMAC_REG_ETH_CFG,
-		   (3 << QCA956X_ETH_CFG_RDV_DELAY_SHIFT) |
-		   (3 << QCA956X_ETH_CFG_RXD_DELAY_SHIFT) |
-		   QCA956X_ETH_CFG_RGMII_EN |
-		   QCA956X_ETH_CFG_GE0_SGMII);
+	ath79_pll_wr(QCA956X_PLL_SWITCH_CLOCK_CONTROL_REG, /*0xc5200*/
+			(2 << QCA956X_PLL_SWITCH_CLOCK_SPARE_USB_REFCLK_FREQ_SEL_SHIFT) |
+			QCA956X_PLL_SWITCH_CLOCK_SPARE_EN_PLL_TOP |
+			QCA956X_PLL_SWITCH_CLOCK_SPARE_MDIO_CLK_SEL1_1 |
+			QCA956X_PLL_SWITCH_CLOCK_SPARE_OEN_CLK125M_PLL |
+			QCA956X_PLL_SWITCH_CLOCK_SPARE_SWITCHCLK_SEL);
+
+	t = (3 << QCA956X_ETH_CFG_RDV_DELAY_SHIFT) |
+		(3 << QCA956X_ETH_CFG_RXD_DELAY_SHIFT) |
+		QCA956X_ETH_CFG_RGMII_EN |
+		QCA956X_ETH_CFG_GE0_SGMII;
+
+	__raw_writel(t, gmac_sgmi_base + QCA956X_GMAC_REG_ETH_CFG);
 
 	ath79_pll_wr(QCA956X_PLL_ETH_XMII_CONTROL_REG,
 		   QCA956X_PLL_ETH_XMII_TX_INVERT |
@@ -385,58 +261,76 @@ static void __init ath_gmac_mii_setup(void)
 
 	mdelay(1);
 
-	ath_reg_wr(QCA956X_MAC_MII_MGMT_CFG, QCA956X_MGMT_CFG_CLK_DIV_20 | BIT(31));
-	ath_reg_wr(QCA956X_MAC_MII_MGMT_CFG, QCA956X_MGMT_CFG_CLK_DIV_20);
+	t = QCA956X_MGMT_CFG_CLK_DIV_20 | BIT(31);
+	__raw_writel(t, mac_cfg_base + QCA956X_MAC_MII_MGMT_CFG_REG);
+
+	t = QCA956X_MGMT_CFG_CLK_DIV_20;
+	__raw_writel(t, mac_cfg_base + QCA956X_MAC_MII_MGMT_CFG_REG);
 }
 
 
-static void __init ath_gmac_hw_start(void)
+static void __init ath_gmac_hw_start(void __iomem *mac_cfg_base)
 {
-	ath_reg_wr(QCA956X_MAC_CFG2, (QCA956X_MAC_CFG2_PAD_CRC_EN |
-				  QCA956X_MAC_CFG2_LEN_CHECK |
-				  QCA956X_MAC_CFG2_IF_10_100));
-	ath_reg_wr(QCA956X_MAC_FIFO_CFG_0, 0x1f00);
-	ath_reg_wr(QCA956X_MAC_FIFO_CFG_1, 0x10ffff);
-	ath_reg_wr(QCA956X_MAC_FIFO_CFG_2, 0xAAA0555);
-	ath_reg_wr(QCA956X_MAC_FIFO_CFG_4, 0x3ffff);
-	ath_reg_wr(QCA956X_MAC_FIFO_CFG_5, 0x7eccf);
-	ath_reg_wr(QCA956X_MAC_FIFO_CFG_3, 0x1f00140);
+	u32 t;
+
+	t = QCA956X_MAC_CFG2_PAD_CRC_EN | QCA956X_MAC_CFG2_LEN_CHECK | QCA956X_MAC_CFG2_IF_10_100;
+	__raw_writel(t, mac_cfg_base + QCA956X_MAC_CFG2_REG);
+
+	__raw_writel(0x1f00, mac_cfg_base + QCA956X_MAC_FIFO_CFG0_REG);
+	__raw_writel(0x10ffff, mac_cfg_base + QCA956X_MAC_FIFO_CFG1_REG);
+	__raw_writel(0xAAA0555, mac_cfg_base + QCA956X_MAC_FIFO_CFG2_REG);
+	__raw_writel(0x3ffff, mac_cfg_base + QCA956X_MAC_FIFO_CFG4_REG);
+	__raw_writel(0x7eccf, mac_cfg_base + QCA956X_MAC_FIFO_CFG5_REG);
+	__raw_writel(0x1f00140, mac_cfg_base + QCA956X_MAC_FIFO_CFG3_REG);
 }
 
 static void __init ath_gmac_enet_initialize(void)
 {
-	unsigned int mask;
-	athrs_sgmii_res_cal();
+	u32 t;
+	void __iomem *ge0_base;
+	void __iomem *mac_cfg_base;
+	void __iomem *gmac_sgmi_base;
+
+	ge0_base = ioremap_nocache(AR71XX_GE0_BASE, AR71XX_GE0_SIZE);
+	mac_cfg_base = ioremap_nocache(QCA956X_MAC_CFG_BASE, QCA956X_MAC_CFG_SIZE);
+	gmac_sgmi_base = ioremap_nocache(QCA956X_GMAC_SGMII_BASE, QCA956X_GMAC_SGMII_SIZE);
+
+	athrs_sgmii_res_cal(gmac_sgmi_base);
 
 	ath79_device_reset_set(QCA956X_RESET_SGMII_ANALOG);
 	mdelay(100);
 	ath79_device_reset_clear(QCA956X_RESET_SGMII_ANALOG);
 	mdelay(100);
-	mask = QCA956X_RESET_SGMII | QCA956X_RESET_SGMII_ANALOG
-	    | QCA956X_RESET_EXTERNAL | QCA956X_RESET_SWITCH_ANALOG
-	    | QCA956X_RESET_SWITCH;
-	ath79_device_reset_set(mask);
-	mdelay(100);
-	mask = QCA956X_RESET_SGMII | QCA956X_RESET_SGMII_ANALOG
-	    | QCA956X_RESET_EXTERNAL;
-	ath79_device_reset_clear(mask);
-	mdelay(100);
-	ath_reg_rmw_set(QCA956X_MAC_CFG1,
-			QCA956X_MAC_CFG1_SOFT_RST | QCA956X_MAC_CFG1_RX_RST |
-			QCA956X_MAC_CFG1_TX_RST);
 
-	mask = QCA956X_RESET_GE0_MAC | QCA956X_RESET_GE1_MAC | QCA956X_RESET_GE0_MDIO | QCA956X_RESET_GE1_MDIO;
-	ath79_device_reset_set(mask);
+	t = QCA956X_RESET_SGMII | QCA956X_RESET_SGMII_ANALOG | QCA956X_RESET_EXTERNAL
+		| QCA956X_RESET_SWITCH_ANALOG | QCA956X_RESET_SWITCH;
+	ath79_device_reset_set(t);
 	mdelay(100);
-	ath79_device_reset_clear(mask);
+
+	t = QCA956X_RESET_SGMII | QCA956X_RESET_SGMII_ANALOG | QCA956X_RESET_EXTERNAL;
+	ath79_device_reset_clear(t);
+	mdelay(100);
+
+	t = __raw_readl(mac_cfg_base + QCA956X_MAC_CFG1_REG);
+	t |= QCA956X_MAC_CFG1_SOFT_RST | QCA956X_MAC_CFG1_RX_RST | QCA956X_MAC_CFG1_TX_RST;
+	__raw_writel(t, mac_cfg_base + QCA956X_MAC_CFG1_REG);
+
+	t = QCA956X_RESET_GE0_MAC | QCA956X_RESET_GE1_MAC | QCA956X_RESET_GE0_MDIO | QCA956X_RESET_GE1_MDIO;
+	ath79_device_reset_set(t);
+	mdelay(100);
+	ath79_device_reset_clear(t);
 	mdelay(100);
 	mdelay(10);
 
-	ath_gmac_mii_setup();
+	ath_gmac_mii_setup(gmac_sgmi_base, mac_cfg_base);
 
-	athrs_sgmii_set_up();
+	athrs_sgmii_set_up(gmac_sgmi_base, ge0_base);
 
-	ath_gmac_hw_start();
+	ath_gmac_hw_start(mac_cfg_base);
+
+	iounmap(ge0_base);
+	iounmap(mac_cfg_base);
+	iounmap(gmac_sgmi_base);
 }
 
 static void __init eap245_v1_setup(void)
