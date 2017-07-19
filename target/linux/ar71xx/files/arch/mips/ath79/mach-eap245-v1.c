@@ -17,7 +17,7 @@
  * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
- * 
+ *
  * EAP245 v1 board support wifi AC1750 and gigabit LAN:
  *  - QCA9563-AL3A MIPS 74kc and 2.4GHz wifi
  *  - QCA9880-BR4A 5 GHz wifi ath10k
@@ -43,12 +43,10 @@
 #include "dev-spi.h"
 #include "dev-usb.h"
 #include "dev-wmac.h"
-//#include "956x.h"
-
 
 /* GPIO
  * GPIO4 reset the boad when direction is changed, be careful
- * GPIO5 si a master switch for all leds */
+ * GPIO5 is a master switch for all leds */
 #define EAP245_V1_GPIO_LED_RED         1
 #define EAP245_V1_GPIO_LED_YEL         9
 #define EAP245_V1_GPIO_LED_GRN         7
@@ -109,37 +107,33 @@ static struct platform_device eap245_v1_phy_device = {
 /* MDIO initialization code from TP-Link GPL code */
 static void __init athrs_sgmii_res_cal(void __iomem *gmac_sgmi_base)
 {
-	unsigned int read_data;
-	unsigned int reversed_sgmii_value;
-	unsigned int i = 0;
-	unsigned int vco;
-	unsigned int startValue = 0, endValue = 0;
+	u32 t, reversed_sgmii_value, i, vco, startValue = 0, endValue = 0;
 
 	ath79_pll_wr(QCA956X_PLL_SGMII_SERDES_REG,
 		   QCA956X_PLL_SGMII_SERDES_EN_LOCK_DETECT |
 		   QCA956X_PLL_SGMII_SERDES_EN_PLL);
 
-	read_data = __raw_readl(gmac_sgmi_base + QCA956X_SGMII_SERDES_REG);
-	vco = read_data & (QCA956X_SGMII_SERDES_VCO_FAST | QCA956X_SGMII_SERDES_VCO_SLOW);
+	t = __raw_readl(gmac_sgmi_base + QCA956X_SGMII_SERDES_REG);
+	vco = t & (QCA956X_SGMII_SERDES_VCO_FAST | QCA956X_SGMII_SERDES_VCO_SLOW);
 
 	/* set resistor Calibration from 0000 -> 1111 */
 	for (i = 0; i < 0x10; i++) {
-		read_data = __raw_readl(gmac_sgmi_base + QCA956X_SGMII_SERDES_REG);
-		read_data &= ~(QCA956X_SGMII_SERDES_RES_CALIBRATION_MASK << QCA956X_SGMII_SERDES_RES_CALIBRATION_SHIFT);
-		read_data |= i << QCA956X_SGMII_SERDES_RES_CALIBRATION_SHIFT;
-		__raw_writel(read_data, gmac_sgmi_base + QCA956X_SGMII_SERDES_REG);
+		t = __raw_readl(gmac_sgmi_base + QCA956X_SGMII_SERDES_REG);
+		t &= ~(QCA956X_SGMII_SERDES_RES_CALIBRATION_MASK << QCA956X_SGMII_SERDES_RES_CALIBRATION_SHIFT);
+		t |= i << QCA956X_SGMII_SERDES_RES_CALIBRATION_SHIFT;
+		__raw_writel(t, gmac_sgmi_base + QCA956X_SGMII_SERDES_REG);
 
 		udelay(50);
 
-		read_data = __raw_readl(gmac_sgmi_base + QCA956X_SGMII_SERDES_REG);
-		if( vco != (read_data & (QCA956X_SGMII_SERDES_VCO_FAST | QCA956X_SGMII_SERDES_VCO_SLOW))) {
+		t = __raw_readl(gmac_sgmi_base + QCA956X_SGMII_SERDES_REG);
+		if( vco != (t & (QCA956X_SGMII_SERDES_VCO_FAST | QCA956X_SGMII_SERDES_VCO_SLOW))) {
 			if (startValue == 0) {
 				startValue = endValue = i;
 			} else {
 				endValue = i;
 			}
 		}
-		vco = read_data & (QCA956X_SGMII_SERDES_VCO_FAST | QCA956X_SGMII_SERDES_VCO_SLOW);
+		vco = t & (QCA956X_SGMII_SERDES_VCO_FAST | QCA956X_SGMII_SERDES_VCO_SLOW);
 	}
 
 	if (startValue == 0) {
@@ -150,23 +144,29 @@ static void __init athrs_sgmii_res_cal(void __iomem *gmac_sgmi_base)
 		reversed_sgmii_value = (startValue + endValue) / 2;
 	}
 
-	read_data = __raw_readl(gmac_sgmi_base + QCA956X_SGMII_SERDES_REG);
-	read_data &= ~(QCA956X_SGMII_SERDES_RES_CALIBRATION_MASK << QCA956X_SGMII_SERDES_RES_CALIBRATION_SHIFT);
-	read_data |= (reversed_sgmii_value & QCA956X_SGMII_SERDES_RES_CALIBRATION_MASK) << QCA956X_SGMII_SERDES_RES_CALIBRATION_SHIFT;
-	__raw_writel(read_data, gmac_sgmi_base + QCA956X_SGMII_SERDES_REG);
+	t = __raw_readl(gmac_sgmi_base + QCA956X_SGMII_SERDES_REG);
+	t &= ~(QCA956X_SGMII_SERDES_RES_CALIBRATION_MASK << QCA956X_SGMII_SERDES_RES_CALIBRATION_SHIFT);
+	t |= (reversed_sgmii_value & QCA956X_SGMII_SERDES_RES_CALIBRATION_MASK) << QCA956X_SGMII_SERDES_RES_CALIBRATION_SHIFT;
+	__raw_writel(t, gmac_sgmi_base + QCA956X_SGMII_SERDES_REG);
 
 	ath79_pll_wr(QCA956X_PLL_SGMII_SERDES_REG,
 		   QCA956X_PLL_SGMII_SERDES_EN_LOCK_DETECT |
 		   QCA956X_PLL_SGMII_SERDES_EN_PLL);
 
-	read_data = __raw_readl(gmac_sgmi_base + QCA956X_SGMII_SERDES_REG);
-	read_data |= (3 << QCA956X_SGMII_SERDES_CDR_BW_SHIFT) |
-			(1 << QCA956X_SGMII_SERDES_TX_DR_CTRL_SHIFT) |
-			QCA956X_SGMII_SERDES_PLL_BW |
-			QCA956X_SGMII_SERDES_EN_SIGNAL_DETECT |
-			QCA956X_SGMII_SERDES_FIBER_SDO |
-			(3 << QCA956X_SGMII_SERDES_VCO_REG_SHIFT);
-	__raw_writel(read_data, gmac_sgmi_base + QCA956X_SGMII_SERDES_REG);
+	t = __raw_readl(gmac_sgmi_base + QCA956X_SGMII_SERDES_REG);
+
+	/* missing in original code, clear before setting */
+	t &= ~(QCA956X_SGMII_SERDES_CDR_BW_MASK << QCA956X_SGMII_SERDES_CDR_BW_SHIFT |
+		QCA956X_SGMII_SERDES_TX_DR_CTRL_MASK << QCA956X_SGMII_SERDES_TX_DR_CTRL_SHIFT |
+		QCA956X_SGMII_SERDES_VCO_REG_MASK << QCA956X_SGMII_SERDES_VCO_REG_SHIFT);
+
+	t |= (3 << QCA956X_SGMII_SERDES_CDR_BW_SHIFT) |
+		(1 << QCA956X_SGMII_SERDES_TX_DR_CTRL_SHIFT) |
+		QCA956X_SGMII_SERDES_PLL_BW |
+		QCA956X_SGMII_SERDES_EN_SIGNAL_DETECT |
+		QCA956X_SGMII_SERDES_FIBER_SDO |
+		(3 << QCA956X_SGMII_SERDES_VCO_REG_SHIFT);
+	__raw_writel(t, gmac_sgmi_base + QCA956X_SGMII_SERDES_REG);
 
 	ath79_device_reset_clear(QCA956X_RESET_SGMII_ANALOG);
 	udelay(25);
@@ -179,7 +179,7 @@ static void __init athrs_sgmii_res_cal(void __iomem *gmac_sgmi_base)
 #define EAP245_V1_SGMII_LINK_WAR_MAX_TRY	10
 static void __init athrs_sgmii_set_up(void __iomem *gmac_sgmi_base, void __iomem *ge0_base)
 {
-	uint32_t status = 0, count = 0, t;
+	u32 status, count = 0, t;
 
 	__raw_writel(0x3f, ge0_base + 0);
 	udelay(10);
@@ -239,7 +239,7 @@ static void __init ath_gmac_mii_setup(void __iomem *gmac_sgmi_base, void __iomem
 {
 	u32 t;
 
-	ath79_pll_wr(QCA956X_PLL_SWITCH_CLOCK_CONTROL_REG, /*0xc5200*/
+	ath79_pll_wr(QCA956X_PLL_SWITCH_CLOCK_CONTROL_REG,
 			(2 << QCA956X_PLL_SWITCH_CLOCK_SPARE_USB_REFCLK_FREQ_SEL_SHIFT) |
 			QCA956X_PLL_SWITCH_CLOCK_SPARE_EN_PLL_TOP |
 			QCA956X_PLL_SWITCH_CLOCK_SPARE_MDIO_CLK_SEL1_1 |
@@ -371,5 +371,4 @@ static void __init eap245_v1_setup(void)
 	ath79_register_eth(0);
 }
 
-MIPS_MACHINE(ATH79_MACH_EAP245_V1, "EAP245-V1", "TP-LINK EAP245 v1",
-	     eap245_v1_setup);
+MIPS_MACHINE(ATH79_MACH_EAP245_V1, "EAP245-V1", "TP-LINK EAP245 v1", eap245_v1_setup);
