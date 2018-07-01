@@ -153,6 +153,17 @@ define Device/tplink_archer-c7-v5
 endef
 TARGET_DEVICES += tplink_archer-c7-v5
 
+define Device/tplink_eap245-v1
+  #Use base format
+  ATH_SOC := qca9563
+  DEVICE_TITLE := TP-Link EAP245 v1
+  LOADER_TYPE := elf
+  IMAGE_SIZE := 15872k
+  DEVICE_PACKAGES := kmod-ath10k-ct ath10k-firmware-qca988x-ct
+  SUPPORTED_DEVICES += eap245-v1
+endef
+TARGET_DEVICES += tplink_eap245-v1
+
 define Device/tplink_cpe210-v2
   $(Device/tplink-safeloader)
   ATH_SOC := qca9533
