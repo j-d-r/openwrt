@@ -140,6 +140,15 @@
 	status = "okay";
 	mtd-mac-address = <&info 0x8>;
 	phy-handle = <&phy0>;
+
+	gmac-config {
+		device = <&gmac>;
+
+		rgmii-ge0 = <1>;
+		ge0-sgmii = <1>;
+		rxdv-delay = <3>;
+		rxd-delay = <3>;
+	};
 };
 
 &wmac {
